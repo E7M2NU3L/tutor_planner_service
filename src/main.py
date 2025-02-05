@@ -5,6 +5,9 @@ from enum import Enum
 import google.generativeai as genai
 from functools import lru_cache
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Enums for input validation
 class TimeRangeEnum(Enum):
@@ -14,6 +17,13 @@ class TimeRangeEnum(Enum):
     Weeks = 'Weeks'
     Hours = 'Hours'
 
+    @classmethod
+    def from_value(cls, value):
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"Invalid EducationLevel: {value}")
+
 class EducationLevel(Enum):
     School = 'School'
     UnderGraduate = "UG"
@@ -22,16 +32,38 @@ class EducationLevel(Enum):
     CompetitiveExam = 'CompetitiveExam'
     SelfStudy = 'SelfStudy'
 
+    @classmethod
+    def from_value(cls, value):
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"Invalid EducationLevel: {value}")
+
+
 class StudyTime(Enum):
     Morning = "Morning"
     Afternoon = "Afternoon"
     Evening = "Evening"
     Night = "Night"
 
+    @classmethod
+    def from_value(cls, value):
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"Invalid EducationLevel: {value}")
+
 class PriorKnowledge(Enum):
     Beginner = "Beginner"
     Intermediate = "Intermediate"
     Advanced = "Advanced"
+
+    @classmethod
+    def from_value(cls, value):
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"Invalid EducationLevel: {value}")
 
 class PreferredStudyMethods(Enum):
     VideoLectures = "VideoLectures"
@@ -39,10 +71,24 @@ class PreferredStudyMethods(Enum):
     PracticeTests = "PracticeTests"
     FlashCards = "FlashCards"
 
+    @classmethod
+    def from_value(cls, value):
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"Invalid EducationLevel: {value}")
+
 class RevisionFrequency(Enum):
     Daily = "Daily"
     Weekly = "Weekly"
     BeforeExam = "BeforeExam"
+
+    @classmethod
+    def from_value(cls, value):
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"Invalid EducationLevel: {value}")
 
 class BreakPreferences(Enum):
     Pomodoro = "POMODORO"
@@ -52,6 +98,13 @@ class BreakPreferences(Enum):
     Flowtime = "FLOWTIME"
     TwoDayRule = "TWO_DAY_RULE"
     ReversePomodoro = "REVERSE_POMODORO"
+
+    @classmethod
+    def from_value(cls, value):
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"Invalid EducationLevel: {value}")
 
 # Dataclass for user input
 @dataclass
@@ -190,40 +243,42 @@ def health_checker():
 # Study Plan Generator
 @app.route("/api/v1/timeline", methods=['POST'])
 def get_study_plan():
-    try:
-        # Parse request JSON
-        data = request.json
-        prompt_data = PromptTypes(
-            timelimit=TimeRangeEnum[data['timelimit']],
-            education=EducationLevel[data['education']],
-            age=int(data['age']),
-            studyHours=int(data['studyHours']),
-            studytime=StudyTime[data['studytime']],
-            prior=PriorKnowledge[data['prior']],
-            examdate=data['examdate'],
-            exam=data['exam'],
-            method=PreferredStudyMethods[data['method']],
-            revision=RevisionFrequency[data['revision']],
-            breaks=BreakPreferences[data['breaks']],
-            availablehoursinWeekend=data['availablehoursinWeekend']
-        )
+    # Parse request JSON
+    data = request.json
+    print(data)
 
-        # Generate prompt
-        prompt_generator = PromptGenerator(prompt_data)
-        prompt = prompt_generator.generate_prompt()
+    prompt_data = PromptTypes(
+        timelimit=TimeRangeEnum.from_value(data['timelimit']),
+        education = EducationLevel.from_value(data['education']),
+        age=int(data['age']),
+        studyHours=int(data['studyHours']),
+        studytime=StudyTime.from_value(data['studytime']),
+        prior=PriorKnowledge.from_value(data['prior']),
+        examdate=data['examdate'],
+        exam=data['exam'],
+        method=PreferredStudyMethods.from_value(data['method']),
+        revision=RevisionFrequency.from_value(data['revision']),
+        breaks=BreakPreferences.from_value(data['breaks']),
+        availablehoursinWeekend=data['availablehoursinWeekend']
+    )
+    print(prompt_data)
 
-        # Call Gemini API
-        gemini = GeminiConnection(api_key="AIzaSyBReFGRnPgppr3hAa1go-A2c8bAris31us")  # Replace with your API key
-        model = gemini.get_model()
-        response = model.generate_content(prompt)
+    # Generate prompt
+    prompt_generator = PromptGenerator(prompt_data)
+    prompt = prompt_generator.generate_prompt()
+    print("Prompt generated")
+    print(prompt)
 
-        # Convert AI response to JSON
-        study_plan = response.text  # Gemini usually returns text, ensure JSON parsing if needed
+    # Call Gemini API
+    gemini = GeminiConnection(api_key=os.getenv('GOOGLE_GEMINI_KEY'))  # Replace with your API key
+    model = gemini.get_model()
+    response = model.generate_content(prompt)
+    print(response.text)
 
-        return jsonify({'study_plan': study_plan}), 200
+    # Convert AI response to JSON
+    study_plan = response.text  # Gemini usually returns text, ensure JSON parsing if needed
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    return jsonify({'study_plan': study_plan}), 200
 
 # Run server
 if __name__ == '__main__':
