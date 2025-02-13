@@ -1,11 +1,10 @@
 from flask import Flask, jsonify, request
 from dataclasses import dataclass
-from typing import List, Optional
 from enum import Enum
-import google.generativeai as genai
-from functools import lru_cache
+from google import genai
 import os
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -109,6 +108,8 @@ class BreakPreferences(Enum):
 # Dataclass for user input
 @dataclass
 class PromptTypes:
+    title : str
+    description : str
     timelimit: TimeRangeEnum
     education: EducationLevel
     age: int
@@ -121,71 +122,30 @@ class PromptTypes:
     revision: RevisionFrequency
     breaks: BreakPreferences
     availablehoursinWeekend: str
+    subject : str
 
 # Dataclasses for output schema
-@dataclass
-class Break:
-    after_minutes: int
-    break_duration_minutes: int
+class Task(BaseModel):
+  task : str
+  time : str
+  description : str
 
-@dataclass
-class BreakSchedule:
-    method: str
-    breaks: List[Break]
+class Assignment(BaseModel):
+  assignment : str
+  time : str
+  assignmentType : str
+  description : str
 
-@dataclass
-class Topic:
-    subject: str
-    topic: str
-    resources: List[str]
-    duration_minutes: int
-    difficulty_level: str
-
-@dataclass
-class StudyDay:
-    date: str
-    day_of_week: str
-    topics: List[Topic]
-    revision_topics: List[str]
-    practice_tests: List[str]
-    break_schedule: BreakSchedule
-    notes: Optional[str] = None
-
-@dataclass
-class WeeklySummary:
-    total_study_hours: int
-    key_focus_areas: List[str]
-    recommended_improvements: List[str]
-
-@dataclass
-class ExamReadiness:
-    current_score: int
-    confidence_level: str
-    areas_to_improve: List[str]
-
-@dataclass
-class StudyPlan:
-    timeline: List[StudyDay]
-    weekly_summary: WeeklySummary
-    exam_readiness_score: ExamReadiness
+class Timetable(BaseModel):
+  day: str
+  topic : str
+  tasks : list[Task]
+  assignments : list[Assignment]
 
 # Gemini API Wrapper
-class GeminiConnection:
-    _instance: Optional['GeminiConnection'] = None
-
-    def __new__(cls, api_key: str):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialize(api_key)
-        return cls._instance
-
-    def _initialize(self, api_key: str) -> None:
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-pro")  # Use the right model version
-
-    @lru_cache(maxsize=100)
-    def get_model(self):
-        return self.model
+gemini_key = os.getenv('GOOGLE_GEMINI_KEY')
+client = genai.Client(api_key=gemini_key)
+print("Google Gemini has been configured")
 
 # Generate prompt for AI
 class PromptGenerator:
@@ -194,42 +154,8 @@ class PromptGenerator:
 
     def generate_prompt(self) -> str:
         return f"""
-        Generate a structured study plan for a student with the following details:
-
-        ## Personalization:
-        - **Time Limit:** {self.prompt_data.timelimit.value}
-        - **Education Level:** {self.prompt_data.education.value}
-        - **Age:** {self.prompt_data.age}
-        - **Preferred Study Hours per Day:** {self.prompt_data.studyHours}
-        - **Preferred Study Time:** {self.prompt_data.studytime.value}
-
-        ## Study Goals & Subjects:
-        - **Prior Knowledge Level:** {self.prompt_data.prior.value}
-        - **Exam Name:** {self.prompt_data.exam}
-        - **Exam Date:** {self.prompt_data.examdate}
-
-        ## Study Preferences:
-        - **Preferred Study Method:** {self.prompt_data.method.value}
-        - **Revision Frequency:** {self.prompt_data.revision.value}
-        - **Break Preference:** {self.prompt_data.breaks.value}
-
-        ## External Constraints:
-        - **Available Hours on Weekends:** {self.prompt_data.availablehoursinWeekend}
-
-        ### Instructions:
-        1. The plan should be **structured and realistic**.
-        2. Adjust difficulty and pacing based on prior knowledge.
-        3. Include **study topics, practice tests, and revision schedules**.
-        4. Suggest **break times and effective study techniques**.
-        5. Ensure **flexibility** to accommodate external constraints.
-        Provide the study plan in a **structured JSON format** following this schema:
-        ```json
-        {{
-            "timeline": [{{"date": "YYYY-MM-DD", "day_of_week": "Monday", "topics": [...], "revision_topics": [...], "practice_tests": [...], "break_schedule": {{"method": "...", "breaks": [...]}} }}],
-            "weekly_summary": {{"total_study_hours": 0, "key_focus_areas": [...], "recommended_improvements": [...] }},
-            "exam_readiness_score": {{"current_score": 0, "confidence_level": "...", "areas_to_improve": [...] }}
-        }}
-        ```
+        Generate a structured study plan for a student for the specified time range with proper schema,
+        the study plan is for a {self.prompt_data.age} year old {self.prompt_data.education.value} student, who is training for {self.prompt_data.exam} which is to be completed within {self.prompt_data.examdate}, he has {self.prompt_data.prior.value} level of knowledge in the subject and the subject is {self.prompt_data.subject} and he is very fond of learning through {self.prompt_data.breaks.value} technique and he likes to revises about the {self.prompt_data.revision.value} and he has {self.prompt_data.studyHours} of studying hours daily and for the weekends he has about {self.prompt_data.availablehoursinWeekend} hours for studying in the weekend, he studies mostly in the {self.prompt_data.studytime.value} and his method of study is {self.prompt_data.method.value}
         """
 
 # Flask app
@@ -245,40 +171,48 @@ def health_checker():
 def get_study_plan():
     # Parse request JSON
     data = request.json
-    print(data)
 
+     # Convert JSON data to PromptTypes instance
     prompt_data = PromptTypes(
-        timelimit=TimeRangeEnum.from_value(data['timelimit']),
-        education = EducationLevel.from_value(data['education']),
-        age=int(data['age']),
-        studyHours=int(data['studyHours']),
-        studytime=StudyTime.from_value(data['studytime']),
-        prior=PriorKnowledge.from_value(data['prior']),
-        examdate=data['examdate'],
-        exam=data['exam'],
-        method=PreferredStudyMethods.from_value(data['method']),
-        revision=RevisionFrequency.from_value(data['revision']),
-        breaks=BreakPreferences.from_value(data['breaks']),
-        availablehoursinWeekend=data['availablehoursinWeekend']
+        title=data["title"],
+        description=data["description"],
+        timelimit=TimeRangeEnum.from_value(data["timelimit"]),
+        education=EducationLevel.from_value(data["education"]),
+        age=data["age"],
+        studyHours=data["studyHours"],
+        studytime=StudyTime.from_value(data["studytime"]),
+        prior=PriorKnowledge.from_value(data["prior"]),
+        examdate=data["examdate"],
+        exam=data["exam"],
+        method=PreferredStudyMethods.from_value(data["method"]),
+        revision=RevisionFrequency.from_value(data["revision"]),
+        breaks=BreakPreferences.from_value(data["breaks"]),
+        availablehoursinWeekend=data["availablehoursinWeekend"],
+        subject=data["subject"]
     )
-    print(prompt_data)
 
     # Generate prompt
     prompt_generator = PromptGenerator(prompt_data)
     prompt = prompt_generator.generate_prompt()
-    print("Prompt generated")
-    print(prompt)
+
+
+    # model configuration
+    config={
+        'response_mime_type': 'application/json',
+        'response_schema': list[Timetable],
+    }
 
     # Call Gemini API
-    gemini = GeminiConnection(api_key=os.getenv('GOOGLE_GEMINI_KEY'))  # Replace with your API key
-    model = gemini.get_model()
-    response = model.generate_content(prompt)
-    print(response.text)
+    response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt,
+            config=config,
+        )
 
-    # Convert AI response to JSON
-    study_plan = response.text  # Gemini usually returns text, ensure JSON parsing if needed
+    # my_time_table: list[Timetable] = response.parsed
+    # print([timetable.__dict__ for timetable in my_time_table])
 
-    return jsonify({'study_plan': study_plan}), 200
+    return jsonify({'study_plan': response.text}), 200
 
 # Run server
 if __name__ == '__main__':

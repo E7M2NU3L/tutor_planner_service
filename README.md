@@ -7,19 +7,12 @@ A Flask-based REST API that generates personalized study plans using Google's Ge
 ### Prerequisites
 - Docker and Docker Compose
 - Python 3.11+
-- Redis Cloud account
-- Neon PostgreSQL database
 - Google Gemini API key
 
 ### Environment Setup
 Create a `.env` file in the root directory with:
 
 env
-DATABASE_URL=your_neon_db_url
-REDIS_HOST=your_redis_host
-REDIS_PORT=your_redis_port
-REDIS_USERNAME=your_redis_username
-REDIS_PASSWORD=your_redis_password
 GEMINI_API_KEY=your_gemini_api_key
 
 ### Running the Application
@@ -105,44 +98,6 @@ Creates a personalized study plan based on user inputs.
             "confidence_level": "Good",
             "areas_to_improve": ["System Design", "Design Patterns"]
         }
-    }
-}
-```
-
-### 2. Update Progress
-Updates the completion status of study topics.
-
-**Endpoint:** `POST /api/v1/timeline/progress/{plan_id}`
-
-**Request Body:**
-```json
-{
-    "completed_topics": [
-        "SOLID Principles",
-        "Basic OOP Concepts"
-    ]
-}
-```
-
-**Success Response:**
-```json
-{
-    "status": "SUCCESS",
-    "progress": 25.5  // Percentage completed
-}
-```
-
-### 3. Get Study Plan
-Retrieves a specific study plan.
-
-**Endpoint:** `GET /api/v1/timeline/study-plan/{plan_id}`
-
-**Success Response:**
-```json
-{
-    "status": "SUCCESS",
-    "study_plan": {
-        // Same structure as create study plan response
     }
 }
 ```
